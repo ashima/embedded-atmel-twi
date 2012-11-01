@@ -25,6 +25,13 @@ static inline void init_stop() {
          (0<<TWWC);
 }
 
+static inline void init_clear_bus_error() {
+  TWCR = (1<<TWEN)|                                 // TWI Interface enabled
+         (1<<TWIE)|(1<<TWINT)|                      // Enable TWI Interupt and clear the flag to read next byte
+         (1<<TWEA)|(0<<TWSTA)|(1<<TWSTO)|           // Send ACK after reception
+         (0<<TWWC);
+}
+
 static inline void init_ack() {
   TWCR = (1<<TWEN)|                                 // TWI Interface enabled
          (1<<TWIE)|(1<<TWINT)|                      // Enable TWI Interupt and clear the flag to read next byte
@@ -68,9 +75,12 @@ void setup(uint8_t addr, uint8_t* bs, int rlen, int wlen) {
 #define D8 /8
 
 // N.B. prog_uchar from <avr/pgmspace.h> does not work, as the PROGMEM attribute gets lost from the typedef
-unsigned char PROGMEM mm[] = { 0,1,3,7 };
+const unsigned char PROGMEM mm[] = { 0,1,3,7 };
 
 ISR(TWI_vect) {
+  PORTB |= (1<<PB2);
+  TCNT2 = 0;
+  SPDR = TWSR;
   /* 11 bytes used for local infunction state
    */
   static int16_t i;
@@ -95,7 +105,7 @@ ISR(TWI_vect) {
 
           if (0 == i) {
             if ((buff.i | 0x7) == 0xffff)
-              TWIUserSignal( (uint8_t)(-buff.i));
+              TWIUserSignal( (uint8_t)(buff.i & 0x7));
             else {
               i = buff.i & 0x3fff;
 
@@ -172,6 +182,8 @@ ISR(TWI_vect) {
       break;
 
     case TW_BUS_ERROR D8:
+      init_clear_bus_error();
+      break;
     case TW_SR_ARB_LOST_SLA_ACK D8:
     case TW_SR_ARB_LOST_GCALL_ACK D8:
     case TW_SR_DATA_NACK D8:
@@ -189,6 +201,5 @@ ISR(TWI_vect) {
       init_nack();
       break;
   }
+  PORTB &= ~(1<<PB2);
 }
-
-

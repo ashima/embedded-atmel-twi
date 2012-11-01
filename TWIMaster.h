@@ -1,12 +1,19 @@
 #ifndef TWIMaster_h
 #define TWIMaster_h
 
-
 #include <stdint.h>
 #include <stddef.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
+// For now the timer is hardwired to Timer5; changing that would require at least #ifdefs
+// for the ISR, as there is no way to parameterize it after the preprocessor has run
+// (remember that ISR(...) is a macro). Either all of the relevant timer registers would
+// need to be passed as arguments and stored (requiring pointer access), #ifdefed into
+// place (ugly), or done via template (which would require #pragma push_macro and 
+// redefinitions of the _SFR_{MEM|IO}{8|16} macros). See ./metaprogramming.txt for an
+// example which compiles.
+#define USINGTIMER
 
 /* hardware-specific config
 */
@@ -15,22 +22,17 @@
 #define TWI_ADR_BITS  1       // Bit position for LSB of the slave address bits in the init byte.
 #define TWSR_STATUS_MASK 0xF8 // 3 LSB are baud rate prescalar
 #define STATE_SUCCESS_BIT 0   // this bit is set in sate_s.state on callback if no error
+#define STATE_TIMEOUT_BIT 1   // this bit is set in sate_s.state on callback if no error
+#define TIMEOUT_TWI_CLOCKS 32 // the absolute minimum is 13, but that assumes zero delay in the slave
 
 
 /* debugging
 */
-#ifndef cbi
-#define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
-#endif
-#ifndef sbi
-#define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
-#endif
+#define PIN_iFree (1<<PA5)
+#define PIN_iCmd  (1<<PA6)
+#define PIN_iCallback (1<<PA7)
 
-#define PIN_iFree PA5
-#define PIN_iCmd  PA6
-#define PIN_iCallback PA7
-
-#define INC_INDEX(idx) sbi(PINA, idx)
+#define INC_INDEX(idx) //PINA |= idx
 
 
 /* TWI Queue
@@ -252,12 +254,34 @@ extern twiQueue twiQ;
 
 static void i2c_master_initialize(void) {
   TWBR = TWI_TWBR;                        // baud rate
-  TWSR &= ~(0x07);                        // ensure there is no baud rate prescalar
+  TWSR &= ~((1<<TWPS1) | (1<<TWPS0));     // ensure there is no baud rate prescalar
   //TWDR = 0xFF;                            // default content = SDA released
   TWCR = (1<<TWEN)|                       // enable TWI interface and release TWI pins
          (0<<TWIE)|(0<<TWINT)|            // disable interupt
          (0<<TWEA)|(0<<TWSTA)|(0<<TWSTO)| // don't actually start anything
          (0<<TWWC);
+  
+  // from datasheet: SCL frequency = F_CPU / (16+2(TWBR)*4**(TWPS))
+  // max freq is 400kHz, and we should probably allow for 16 clocks to be safe
+  // (noting that this limits how long TWISlaveMem14's TWIUserSignal(...) can take)
+  // 16MHz / 40 == 400kHz, which means we need a prescaler of 40 * 16 = 640 for the timer
+  // to be 1 clock before timeout. But that's actually bad, as outlined in the "Prescalar 
+  // Reset" section of the datasheet. Instead, we want to max out how high the timer will
+  // count. If using a 16-bit timer, we'll want to allow up to 640 * 4 (allowing for 
+  // 100kHz I2C freq), which means we can run with no prescaler. If using an 8-bit timer,
+  // we'd have to at least use the /8 option.
+  
+  #ifdef USINGTIMER
+  DDRL |= (1<<PL3);     // for debugging
+  TCCR5A = (1<<COM5A0); // for debugging
+  TCCR5B = (1<<WGM52) | (1<<CS50);
+  TIMSK5 = 0;
+  TIFR5 = 0xFF;
+  // the + 1 is to avoid any possible problem if a nonzero prescaler is used above
+  //                           this formula is from the datasheet, with TWPS = 0
+  //       vvvvvvvvvvvvvvvvvvv (F_CPU is omitted because it is a common factor)
+  OCR5A = ((16 + 2 * TWI_TWBR) * TIMEOUT_TWI_CLOCKS) + 1;
+  #endif
 }
 
 
