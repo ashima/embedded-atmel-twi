@@ -6,10 +6,10 @@ basic syntax
 
 These are text commands sent to the  twi\_serial\_bridge MCU over its UART.
 
-        AAAA[ NN]\\n               # for reads
-        AAAA w BB[ BB ...]\\n      # for writes
-        AAAA w BBBB[...]\\n        # alternative write syntax
-        AAAA w BBBB[ BBBB ...]\\n  # yet another alternative write syntax
+        AAAA[ NN]\n               # for reads
+        AAAA w BB[ BB ...]\n      # for writes
+        AAAA w BBBB[...]\n        # alternative write syntax
+        AAAA w BBBB[ BBBB ...]\n  # yet another alternative write syntax
 
 where
 
@@ -22,7 +22,7 @@ where
 * `BB[ BB ...]` are the bytes to write (in hexadecimal)  
   between 1 and `MAXCOUNT` may be specified  
   spaces can be added between any number of bytes 
-* `\\n` can be any combination of `\\n` and `\\r`
+* `\n` can be any combination of `\n` and `\r`
 
 options
 -------
@@ -42,17 +42,17 @@ normal vs. binary mode
 In verbose + non-binary mode (`-vB`), a read followed by a write will look like
 this (`<` means data sent to the MCU; `>` means data received from MCU; all newline characters are displayed):
 
-        < 9c w 012345\\r
-        > Attempting to write address 0x9C - 0x9E\\r\\n
-        < 9c 4\\r
-        > Attempting to read address 0x9C - 0x9F\\r\\n
-        > 01 23 45 00 \\r\\n
+        < 9c w 012345\r
+        > Attempting to write address 0x9C - 0x9E\r\n
+        < 9c 4\r
+        > Attempting to read address 0x9C - 0x9F\r\n
+        > 01 23 45 00 \r\n
 
 Here is the exchange in non-verbose, binary mode (`-Vb`):
 
-        < 9c w 012345\\r
+        < 9c w 012345\r
         > ~
-        < 9c 4\\r
+        < 9c 4\r
         > ~\x01#E\x00
  
 The `~` is an acknowledge from non-verbose mode. The response from reading 4 bytes is in binary, with characters rendered when they can be. (`ord('#') == 23h`, `ord('E') == 45h`)
@@ -62,14 +62,14 @@ Note that in binary mode, text will still be printed; e.g. when there is an erro
 example
 -------
 
-        < -vB\\r
-        < -a50\\r
-        > Changing TWI address to 0x50\\r\\n
-        < 9c 4\\r
-        > Attempting to read address 0x9C - 0x9F\\r\\n
-        > 01 23 45 00 \\r\\n
-        < 9c w 09876543\\r
-        > Attempting to write address 0x9C - 0x9F\\r\\n
-        < 9c 4\\r
-        > Attempting to read address 0x9C - 0x9F\\r\\n
-        > 09 87 65 43 \\r\\n
+        < -vB\r
+        < -a50\r
+        > Changing TWI address to 0x50\r\n
+        < 9c 4\r
+        > Attempting to read address 0x9C - 0x9F\r\n
+        > 01 23 45 00 \r\n
+        < 9c w 09876543\r
+        > Attempting to write address 0x9C - 0x9F\r\n
+        < 9c 4\r
+        > Attempting to read address 0x9C - 0x9F\r\n
+        > 09 87 65 43 \r\n
