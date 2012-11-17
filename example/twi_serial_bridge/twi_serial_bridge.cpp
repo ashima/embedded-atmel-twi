@@ -3,32 +3,45 @@
 #include "string_parse.h"
 #include "SerialPrinter.h"
 
+/********************************************
+Alter the #defines below to suit your device.
+********************************************/
 #define USB_BAUD 115200
 #define USB_SERIAL Serial
+#define PIN_TWI PIND
+#define SCL (1<<0) // this is the pin # of SCL on PIN_TWI for your AVR
+#define SDA (1<<1) //                      SDA 
+#define DEFAULT_TWI_ADDRESS 0x50
+#define LEDPIN 13 // this is an LED on Arduino boards
+const uint8_t MAXCOUNT = 0x20; // max # of bytes to read/write to TWI
 
-#define LEDPIN 13
+// we're using the fact that the low two bits of TWSR are 0 because 
+// ../../TWIMaster.h does not use TWPS[1:0]
+#define TWI_TIMEOUT (1<<(STATE_SUCCESS_BIT+1))
+#define ACK_CHAR '~'
 
 bool _verbose = true;
 bool _binary = false;
-uint8_t _twi_addr = 0x50;
+uint8_t _twi_addr = DEFAULT_TWI_ADDRESS;
 volatile state_t *_p = NOSTATE;
 volatile uint8_t _i2c_calls = 0;
 SerialPrinter usb(&USB_SERIAL);
-
-// do I need this if twiQ is defined in TWIMaster.h?
-//extern twiQueue twiQ;
 
 bool twi_state_ok(uint8_t state) {
   return (state & (1<<STATE_SUCCESS_BIT)) != 0;
 }
 
 void print_twi_error() {
-  usb.print("TWI ERROR -> ");
+  uint8_t v = PIN_TWI;
+
+  usb.print("TWI ERROR: addr=0x");
   usb.print_hex(_twi_addr);
-  usb.print(": ");
+  usb.print(", TWSR=0x");
   usb.print_hex(_p->state);
-  usb.print(" : ");
-  usb.print_hex(PIND & 0x3); // the two I2C pins on ATmega2560
+  usb.print(", SCL=");
+  usb.print(v & SCL ? '1' : '0');
+  usb.print(", SDA=");
+  usb.print(v & SDA ? '1' : '0');
   usb.println();
 }
 
@@ -44,8 +57,8 @@ bool wait_for_twi() {
     PINB |= (1<<PB7);
   
   if (loops == 0) {
-    i2c_master_initialize();
-    _p->state = 1<<(STATE_SUCCESS_BIT+1);
+    i2c_master_initialize(); // not sure if this is still required
+    _p->state = TWI_TIMEOUT;
   }
   
   return twi_state_ok(_p->state);
@@ -67,9 +80,7 @@ bool wait_for_twi_r(char* p, uint8_t count) {
   return wait_for_twi();  
 }
 
-const uint8_t MAXCOUNT = 0x20;
-
-void test_I2C_RX_r(uint16_t mem_addr, uint8_t count) {
+void twi_r(uint16_t mem_addr, uint8_t count) {
   if (_verbose) {
     usb.print("Attempting to read address 0x");
     usb.print_hex(mem_addr);
@@ -88,7 +99,7 @@ void test_I2C_RX_r(uint16_t mem_addr, uint8_t count) {
   if (wait_for_twi_w(p1, sizeof(p1)) &&
       wait_for_twi_r(p2, count)) {
     if (!_verbose)
-      usb.print('~');
+      usb.print(ACK_CHAR);
     
     if (!_binary) {
       for (uint8_t i = 0; i < count; i++) {
@@ -104,7 +115,7 @@ void test_I2C_RX_r(uint16_t mem_addr, uint8_t count) {
     print_twi_error();
 }
 
-void test_I2C_RX_w(uint16_t mem_addr, uint8_t* write, uint8_t count) {
+void twi_w(uint16_t mem_addr, uint8_t* write, uint8_t count) {
   if (_verbose) {
     usb.print("Attempting to write address 0x");
     usb.print_hex(mem_addr);
@@ -127,10 +138,10 @@ void test_I2C_RX_w(uint16_t mem_addr, uint8_t* write, uint8_t count) {
   if (!wait_for_twi_w(p, count+2))
     print_twi_error();
   else if (!_verbose)
-    usb.print('~');
+    usb.print(ACK_CHAR);
 }
 
-bool test_I2C_addr(uint8_t addr) {
+bool test_twi_addr(uint8_t addr) {
   // must read/write at least one byte
   char c;
   _i2c_calls = 0;
@@ -143,8 +154,12 @@ bool test_I2C_addr(uint8_t addr) {
     PINB |= (1<<PB7);
   
   if (loops == 0) {
-    //i2c_master_initialize();
-    _p->state = 1<<(STATE_SUCCESS_BIT+1);
+    // this line being commented out is what makes this different from 
+    // twi_r(...); I forget whether or not this is important; at the time, I
+    // was futzing with properly recovering from errors, but this may no longer
+    // be necessary
+    //i2c_master_initialize(); 
+    _p->state = TWI_TIMEOUT;
   }
   
   return twi_state_ok(_p->state);
@@ -161,21 +176,9 @@ ISR(TIMER2_OVF_vect) {
   {}
 }
 
-void setup()
-{
-  pinMode(LEDPIN, OUTPUT);
-  digitalWrite(LEDPIN, HIGH);
-
-  // debugging
-  PORTA = 0;
-  DDRA = 0xFF;
-
-  USB_SERIAL.begin(USB_BAUD);
-  usb.println("twi_serial_bridge");
-  
+void set_up_twi_spi_debugging() {
   // SS must be set to output or driven high
   DDRB |= (1<<PB0) | (1<<PB1) | (1<<PB2); // PB0 is SS, PB1 is SCK, PB2 is MOSI, PB3 is MISO
-  
 	SPCR = (1<<SPE) | (1<<MSTR) | (1<<SPR0);
 	SPSR = (1<<SPI2X);
 
@@ -183,31 +186,29 @@ void setup()
   TCCR2B = (1<<CS21) | (0<<CS20);
   OCR2A = 240;
   TIMSK2 = (1<<OCIE2A) | (1<<TOIE2);
+}
+
+void setup() {
+  pinMode(LEDPIN, OUTPUT);
+  digitalWrite(LEDPIN, HIGH);
+
+  // for debugging; this port is nicely organized on the DIP header on the 
+  // Arduino Mega
+  PORTA = 0;
+  DDRA = 0xFF;
+
+  USB_SERIAL.begin(USB_BAUD);
+  usb.println("twi_serial_bridge");
+  
+  set_up_twi_spi_debugging();
   
   i2c_master_initialize();
 }
 
-void loop()
-{
-  // This is designed to work with twi_slave.h, and specifically, the example in ../RX/RX.pde .
-  // syntax is either X00Y R\n, or X00Y W0 W1 ...\n
-  // where X is 0 for no byte alignment, 4 for 2-byte alignment, 8 for 4, C for 8,
-  //       Y is 0-7 (which is the size of ../RX/RX.pde -> _twiStore)
-  //       R is the number of bytes to read
-  //       W0 W1 ... is one or more bytes to write
-  //       the \n really just needs to be a non-hexadecimal, non-space character
-  // "2-byte alignment" means that two bytes will be buffered before sending; this prevents the
-  // TWI interface from sending one byte, then letting other code execute and change both bytes,
-  // such that the next byte sent doesn't "match" the first byte. An example is illustrative:
-  // 
-  // Imagine that we are reading RPMs of a motor and they are hovering between 0x00D0 and 0x0120.
-  // When we read the LSB, the RPM happens to be 0x00FF, so we read an 0xFF. But then the motor
-  // speeds up a tiny bit, such that it is 0x0100 when we read the MSB. The RPM would appear to
-  // be 0x01FF, which is double the average RPM during our TWI request! So, our TWI slave code has
-  // the ability to buffer 2-8 bytes inside the TWI interrupt service routine, where interrupts
-  // are disabled and therefore the 2-byte RPM value cannot be disturbed between accessing the
-  // LSB and the MSB.
-  
+void loop() {
+  // this is designed to work with ../../TWISlaveMem14.c
+  // see API.md for details
+
   const uint8_t MAXSIZE = 0x80;
   char buffer[MAXSIZE];
   
@@ -216,7 +217,7 @@ void loop()
     
     if (consume_char_if(p, 's')) {
       for (int addr = 1; addr <= 127; addr++) {
-        if (test_I2C_addr(addr)) {
+        if (test_twi_addr(addr)) {
           usb.print_hex(addr);
           usb.println();
         }
@@ -266,10 +267,10 @@ hit_bad_option: ; // need semicolon for it to compile
         uint8_t write_count = parse_hex_array(p, write, MAXCOUNT);
       
         if (write_count > 0)
-          test_I2C_RX_w(addr, write, write_count);
+          twi_w(addr, write, write_count);
       } else {
         uint8_t count = parse_hex8(p);
-        test_I2C_RX_r(addr, max(count, 1));
+        twi_r(addr, max(count, 1));
       }
     }
   }

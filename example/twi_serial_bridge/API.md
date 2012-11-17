@@ -13,7 +13,7 @@ These are text commands sent to the  twi\_serial\_bridge MCU over its UART.
 
 where
 
-* `AAAA` is a 16-bit value in hexadecimal:  
+* `AAAA` is a 16-bit value in hexadecimal, used by ../../TWISlaveMem14.c:  
   the 14 low bits are the address  
   the 2 high bits are the # bytes to buffer on the slave: 
   01b for 2 bytes, 10b for 4 bytes, and 11b for 8 bytes
@@ -37,7 +37,7 @@ options
     -aHH    set TWI address to HH, in hexadecimal
     -oHHHH  change the TWI timeout value (see TWI documentation)
 
-Options may be combined, e.g. `-Vba50`. A newline is not required. Usually you will use verbose and not binary (`-vB`, the default), or vice versa (`-Vb`).
+Options may be combined, e.g. `-Vba50\n`. A newline is required. Usually you will use verbose and not binary (`-vB`, the default), or vice versa (`-Vb`).
 
 normal vs. binary mode
 ----------------------
@@ -76,3 +76,24 @@ example
     < 9c 4\r
     > Attempting to read address 0x9C - 0x9F\r\n
     > 09 87 65 43 \r\n
+
+buffering
+---------
+
+This is with respect to the 2 MSB of `AAAA` in the **options** section.
+
+Imagine that we are reading RPMs of a motor and they are hovering between 0x00D0 and 0x0120. When we read the LSB, the RPM happens to be 0x00FF, so we read an 0xFF. But then the motor speeds up a tiny bit, such that it is 0x0100 when we read the MSB. The RPM would appear to be 0x01FF, which is double the average RPM during our TWI request! So, our TWI slave code has the ability to buffer 2-8 bytes inside the TWI interrupt service routine, where interrupts are disabled and therefore the 2-byte RPM value cannot be disturbed between accessing the LSB and the MSB.
+
+twi bus scan
+------------
+
+Sending `s` (newline not required) will cause the bridge MCU to attempt to read a single byte from every TWI address between 1 and 127 (0 is supposed to be general broadcast). It will report on all TWI devices which responded without error.
+
+twi errors
+----------
+
+Should an error occur on the TWI bus, an error message will be printed out which looks like the following:
+
+    TWI ERROR: addr=0x50, TWSR=0x20, SCL=1, SDA=1\r\n
+
+TWSR will have 02h ORed in if a timeout occurred. If SCL and/or SDA are 0, it is likely that an external TWI device is pulling the lines low for some reason. The master _may_ be able to flush the bus by pulsing SCL if only SDA is 0; if SCL is 0, you'll need to reset the troublemaking TWI device.
