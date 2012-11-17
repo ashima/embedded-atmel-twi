@@ -78,7 +78,7 @@ public:
         
         break;
       }
-      if (idx == size) {
+      if (idx == size - 1) {
         buffer[idx] = '\0';
         output->print("ERROR: serial receive overflow; so far: ");
         output->println(buffer);
