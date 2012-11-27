@@ -1,10 +1,10 @@
-twi\_serial\_bridge API
+twi_serial_bridge API
 =====================
 
 basic syntax
 ------------
 
-These are text commands sent to the  twi\_serial\_bridge MCU over its UART.
+These are text commands sent to the  twi_serial_bridge MCU over its UART.
 
     AAAA[ NN]\n               # for reads
     AAAA w BB[ BB ...]\n      # for writes
@@ -96,4 +96,8 @@ Should an error occur on the TWI bus, an error message will be printed out which
 
     TWI ERROR: addr=0x50, TWSR=0x20, SCL=1, SDA=1\r\n
 
-TWSR will have 02h ORed in if a timeout occurred. If SCL and/or SDA are 0, it is likely that an external TWI device is pulling the lines low for some reason. The master _may_ be able to flush the bus by pulsing SCL if only SDA is 0; if SCL is 0, you'll need to reset the troublemaking TWI device.
+TWSR error codes can be found in the Atmel AVR documenation for your particular device. Most, if not all of them can also be found as constants in [embedded-atmel-twi/TWIMaster.cpp]; search for `state_table[]`. TWSR will have 02h ORed in if a timeout occurred.
+
+If SCL and/or SDA are 0, it is likely that an external TWI device is pulling the lines low for some reason. The master _may_ be able to flush the bus by pulsing SCL if only SDA is 0; if SCL is 0, you'll need to reset the troublemaking TWI device.
+
+[embedded-atmel-twi/TWIMaster.cpp]: https://github.com/ashima/embedded-atmel-twi/blob/master/TWIMaster.cpp
