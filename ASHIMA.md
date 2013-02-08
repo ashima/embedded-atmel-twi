@@ -13,8 +13,8 @@ interface.
                "AVR315: Using the TWI module as I2C master"
 [master code]: http://www.atmel.com/dyn/resources/prod_documents/AVR315.zip
 
-tagged:
-[twi](http://www.ashimagroup.net/os/tag/twi)
-[atmel](http://www.ashimagroup.net/os/tag/atmel)
-[embedded](http://www.ashimagroup.net/os/tag/embedded)
+Tags:
+[twi](http://ashimagroup.net/os/tag/twi)
+[atmel](http://ashimagroup.net/os/tag/atmel)
+[embedded](http://ashimagroup.net/os/tag/embedded)
 
