@@ -1,0 +1,3 @@
+Modified from https://github.com/jrowberg/i2cdevlib , commit 
+67c7b5bb2807e04e8c0f5215df5ceefec26beae5 ; I was too lazy to make it a
+sub-repo for now. 
